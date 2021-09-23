@@ -21,7 +21,7 @@ spec:
        name: pihole
     spec:
       affinity:
-        # ⬇⬇⬇ This ensures pods will land on separate hosts
+        #This ensures pods will land on separate hosts
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
           - labelSelector:
