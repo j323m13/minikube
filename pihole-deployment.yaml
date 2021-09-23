@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pihole
+  labels:
+    app: pihole
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: pihole
+  template:
+    metadata:
+     labels:
+       app: pihole
+       name: pihole
+    spec:
+      affinity:
+        # ⬇⬇⬇ This ensures pods will land on separate hosts
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions: [{ key: app, operator: In, values: [pihole] }]
+            topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: pihole
+        image: pihole/pihole:latest
+        imagePullPolicy: Always
+        env:
+        - name: TZ
+          value: "Europe/Zurich"
+        - name: WEBPASSWORD
+          value: "password"
+        volumeMounts:
+        - name: pihole-local-etc-volume
+          mountPath: "/etc/pihole"
+        - name: pihole-local-dnsmasq-volume
+          mountPath: "/etc/dnsmasq.d"
+      volumes:
+      - name: pihole-local-etc-volume
+        persistentVolumeClaim:
+          claimName: pihole-local-etc-claim
+      - name: pihole-local-dnsmasq-volume
+        persistentVolumeClaim:
+          claimName: pihole-local-dnsmasq-claim
+      terminationGracePeriodSeconds: 0 # kill pods when terminating
