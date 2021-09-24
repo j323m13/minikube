@@ -1,13 +1,14 @@
-# Pihole on minikube
-Installation of pihole on minikube (demo)
+# Pihole on minikube (demo)
 
-Recently I was asked to prepare a short K8s demo. 
+Recently I was asked to prepare a short K8s demo. I decided to install [pihole](https://pi-hole.net/) on my kubernetes cluster.
+
 In this short demo, we will 
 - configure 3 virtual machines (nodes) on minikube
-- create our yaml configuration files to prepare our storage space, pods and the service that will map our pods to the main server (node). 
+- create our yaml configuration files to prepare our storage space, pods and the service that will map the traffic to our pods. 
 - launch an instance of pihole (ad blocker and dns server) (to see if everything works)
 - scaling up and down our pihole instance (pods)
 - Lesson learned
+- improvement ideas
 
 ## Configuration: set up of three nodes in minikube
 We assume that minikube, docker and kubenetes are installed on the machine. 
@@ -18,7 +19,8 @@ In the terminal, we create with minikube 3 servers (3 nodes) with the following 
 - CPU: 2
 - RAM: 2G
 - Driver: virtualmachine
-- p: server (server, server-m02, server-m03). m stands for multinode. 
+- nodes: 3
+- p: server (server, server-m02, server-m03). p stands for profile, m stands for multinode. 
 
 
  `minikube start --driver=virtualbox --cpus=2 --memory=2G --nodes=3 -p server`
@@ -30,17 +32,17 @@ In the terminal, we create with minikube 3 servers (3 nodes) with the following 
   `minikube start --driver=docker --cpus=2 --memory=2G --nodes=3 -p server`
   
   
-  we can test if our nodes have been created:
+  We can test if our nodes have been created:
    `kubectl get nodes -o wide`
    
-  For our exemple, we need the ip of our minikube server profile:
+  For our exemple, we will need the ip of our minikube server profile:
    `minikube ip -p server`
    We keep this ip for further use (in config file).
 
 ## set up our kubernetes cluster
-As we can see in the docker image of pihole, we need to map the `53` ports (`UDP` and `TCP`) as well as the `8000` port (access to admin pannel: web interface). We also need to create two folder on our machine (`etc/` and `/dnsmasq.d`) and to map those folder inside the pods (`/etc/pihole` and `/etc/dnsmasq.d`). Last but not least, we need to set a password to access the web admin pannel. There are advantages and disadvantages to doing this. 
+As we can see in the docker image of pihole, we need to map the `53` ports (`UDP` and `TCP`) as well as the `8000` port (access to admin pannel: web interface). We also need to create two folder on our machine (`etc/` and `/dnsmasq.d`) and to map those folders inside the pods (`/etc/pihole` and `/etc/dnsmasq.d`). Last but not least, we need to set a password to access the web admin pannel. There are advantages and disadvantages to doing this. 
 - Advantages: you can change the password and redeploy the pods. Each pod has the same password. 
-- Disadvantage: if someone has access to the file, then they know the password. 
+- Disadvantage: if someone has access to the file, then he/she knows the admin password. 
 
 ```
 docker run -d \
@@ -56,12 +58,12 @@ docker run -d \
   ```
   ### YAML is life
   We will create the following files in yaml.
-  1. `pihole.yaml` (where we set up the StorageClass, the PersistentVolumClaim, the PersistenVolume)
-  2. `pihole-deployment.yaml` (where we set up the deploymwent option of our pihole app)
+  1. `pihole.yaml` (where we set up the StorageClass, the PersistenVolume and the PersistentVolumClaim)
+  2. `pihole-deployment.yaml` (where we set up the deployment options of our pihole app)
   3. `pihole-svc.yaml` (where we set up the service for our cluster)
 
 #### `pihole.yaml`
-Remember the ip we searched in minikube. We will set it here in `ExternalIPs`-Option:
+Remember the ip we searched in minikube? We will set it here in `ExternalIPs`-Option:
 
 
 ```apiVersion: storage.k8s.io/v1
@@ -248,11 +250,13 @@ We check if the storage claim (pvc) and storage have been properly set:
 2. `kubectl create -f pihole-deployment.yaml`
 We check if the pods have been created:
 `kubectl get pods -o wide`
+`kubectl describe pods`
 
 
 3. `kubectl create -f pihole-svc.yaml`
 We check if our service pihole is running:
 `kubectl get service`
+`kubectl describe service`
 
 We check the logs (recursively -f) in a second terminal windows/tab:
 `kubectl logs -f -l name=pihole`
@@ -265,20 +269,26 @@ We test if our dns server is reachable
 We test if we can reach the admin web interface:
 `IP-CLUSTER:8000/admin`
 
+We also see which pods is been used (hostname:`pod-name`).
+
 On our machine, we set up pihole as first dns server and test if web queries are succesful or not
 `dig @IP-CLUSTER google.com` or directly with the web interface.
 
-## let's scale it
+## let's scale it up
 We have 2 intances of pihole running on 2 separated pods (and maybe separated servers). We want now to scale it up to 5 pods:
-`kubectl scale --current-replicas=2 --replicas=5 -p server`.
+`kubectl scale --current-replicas=2 --replicas=3 -p server`.
 
 Keep in mind that this command does not survive a reboot. 
 
 We check if we have 5 pods running:
 `kubectl get pods -o wide`
 
-Now we want only 1 pods on server-m02 and 1 pods (as a backup) running only on server-m03:
+## scale it down
+Now we want only 1 pod on one of the server and 1 pod (as a backup) running only on server-m03:
+`kubectl scale --current-replicas=3 --replicas=1 -p server`.
+
 `kubectl delete pod NAME_OF_THE_PODS`
+
 if the pods are not dying:
 `kubectl delete pod --grace-period=0 --force PODNAME`
 
@@ -332,8 +342,8 @@ Alrighat, now we have one pod running on server-m02 and another one running alwa
 + well documented services
 + going further with try and error
 - down into the rabbit hole
-- yaml syntax will makes you cry
-- going further with try and error
+- yaml syntax will make you cry
+- going further with try and error principle
 
 
 ## how to improve our setup.
