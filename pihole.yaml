@@ -22,7 +22,7 @@ spec:
     path: /Users/jeremieequey/Documents/programmation/workspace/docker/pihole-final/etc
   nodeAffinity:
     required:
-      nodeSelectorTerms:
+      nodeSelectorTerms: # on which node we want to mount our volume
       - matchExpressions:
         - key: kubernetes.io/hostname
           operator: In
@@ -82,7 +82,7 @@ spec:
   - ReadWriteOnce
   resources:
     requests:
-      storage: 500Mi
+      storage: 1Gi
   selector:
     matchLabels:
       directory: dnsmasq.d

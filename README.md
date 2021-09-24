@@ -62,13 +62,180 @@ docker run -d \
 
 #### `pihole.yaml`
 Remember the ip we searched in minikube. We will set it here in `ExternalIPs`-Option:
-```this the file ```
+
+
+```apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: Immediate
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pihole-local-etc-volume
+  labels:
+    directory: etc
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: local
+  local:
+    path: /Users/jeremieequey/Documents/programmation/workspace/docker/pihole-final/etc
+  nodeAffinity:
+    required:
+      nodeSelectorTerms: # on which node we want to mount our volume
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - server
+          - server-m02
+          - server-m03
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pihole-local-etc-claim
+spec:
+  storageClassName: local
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  selector:
+    matchLabels:
+      directory: etc
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pihole-local-dnsmasq-volume
+  labels:
+    directory: dnsmasq.d
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: local
+  local:
+    path: /Users/jeremieequey/Documents/programmation/workspace/docker/pihole-final/dnsmasq.d
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - server 
+          - server-m02 
+          - server-m03
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pihole-local-dnsmasq-claim
+spec:
+  storageClassName: local
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  selector:
+    matchLabels:
+      directory: dnsmasq.d
+
+ ```
 
 #### `pihole-deployment.yaml`
-```this the file ```
+
+
+```apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pihole
+  labels:
+    app: pihole
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: pihole
+  template:
+    metadata:
+     labels:
+       app: pihole
+       name: pihole
+    spec:
+      affinity:
+        #This ensures pods will land on separate hosts
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions: [{ key: app, operator: In, values: [pihole] }]
+            topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: pihole
+        image: pihole/pihole:latest
+        imagePullPolicy: Always
+        env:
+        - name: TZ
+          value: "Europe/Zurich"
+        - name: WEBPASSWORD
+          value: "password"
+        volumeMounts:
+        - name: pihole-local-etc-volume
+          mountPath: "/etc/pihole"
+        - name: pihole-local-dnsmasq-volume
+          mountPath: "/etc/dnsmasq.d"
+      volumes:
+      - name: pihole-local-etc-volume
+        persistentVolumeClaim:
+          claimName: pihole-local-etc-claim
+      - name: pihole-local-dnsmasq-volume
+        persistentVolumeClaim:
+          claimName: pihole-local-dnsmasq-claim
+      terminationGracePeriodSeconds: 0 # kill pods when terminating
+ ```
 
 #### `pihole-svc.yaml`
-```this the file ```
+
+
+```apiVersion: v1
+kind: Service
+metadata:
+  name: pihole
+spec:
+  selector:
+    app: pihole
+  ports:
+    - port: 8000
+      targetPort: 80
+      name: pihole-admin
+    - port: 53
+      targetPort: 53
+      protocol: TCP
+      name: dns-tcp
+    - port: 53
+      targetPort: 53
+      protocol: UDP
+      name: dns-udp
+  externalIPs:
+  - 192.168.99.153 #assign our pihole-svc to a static ip (minikube ip -p server)
+ ```
 
 ## Let's create
 Now that we have our configuration files, we have to create the storage (pvc, pv), the pods, the deployment and the service in kubernetes:
@@ -86,6 +253,9 @@ We check if the pods have been created:
 3. `kubectl create -f pihole-svc.yaml`
 We check if our service pihole is running:
 `kubectl get service`
+
+We check the logs (recursively -f) in a second terminal windows/tab:
+`kubectl logs -f -l name=pihole`
 
 
 ## Test the configuration
@@ -116,7 +286,37 @@ we create a yaml-file with our backup pod configuration which stipulates that it
 
 `pihole-backup-node`
 
-`insert config`
+```apiVersion: v1
+kind: Pod
+metadata:
+  name: pihole-backup
+  labels:
+    app: pihole
+spec:
+  nodeName: server-m03
+  containers:
+    - name: pihole
+      image: 'pihole/pihole:latest'
+      imagePullPolicy: Always
+      env:
+        - name: TZ
+          value: Europe/Zurich
+        - name: WEBPASSWORD
+          value: password
+      volumeMounts:
+        - name: pihole-local-etc-volume
+          mountPath: /etc/pihole
+        - name: pihole-local-dnsmasq-volume
+          mountPath: /etc/dnsmasq.d
+  volumes:
+    - name: pihole-local-etc-volume
+      persistentVolumeClaim:
+        claimName: pihole-local-etc-claim
+    - name: pihole-local-dnsmasq-volume
+      persistentVolumeClaim:
+        claimName: pihole-local-dnsmasq-claim
+  terminationGracePeriodSeconds: 0
+  ```
 
 `kubectl create -f pihole-backup-node.yaml`
 
