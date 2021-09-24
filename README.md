@@ -333,7 +333,7 @@ spec:
 We check if the creation of this pod has been succesful:
 `kubectl get pods -o wide`
 
-Alrighat, now we have one pod running on server-m02 and another one running always on server-m03. Our installation should be safe for a while. 
+Alright, now we have one pod running on a server and another one running always on server-m03. Our installation should be safe for a while. 
 
 ## Lesson learned
 
